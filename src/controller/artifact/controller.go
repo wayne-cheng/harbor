@@ -102,7 +102,7 @@ type Controller interface {
 	// Delete the artifact specified by artifact ID
 	Delete(ctx context.Context, id int64) (err error)
 	// Copy the artifact specified by "srcRepo" and "reference" into the repository specified by "dstRepo"
-	Copy(ctx context.Context, srcRepo, reference, dstRepo string) (id int64, err error)
+	Copy(ctx context.Context, srcRepo, reference, dstRepo string, option *Option) (id int64, err error)
 	// UpdatePullTime updates the pull time for the artifact. If the tagID is provides, update the pull
 	// time of the tag as well
 	UpdatePullTime(ctx context.Context, artifactID int64, tagID int64, time time.Time) (err error)
@@ -464,20 +464,22 @@ func (c *controller) deleteDeeply(ctx context.Context, id int64, isRoot, isAcces
 	return nil
 }
 
-func (c *controller) Copy(ctx context.Context, srcRepo, reference, dstRepo string) (int64, error) {
+func (c *controller) Copy(ctx context.Context, srcRepo, reference, dstRepo string, option *Option) (int64, error) {
 	dstAccs := make([]*accessorymodel.AccessoryData, 0)
-	return c.copyDeeply(ctx, srcRepo, reference, dstRepo, true, false, &dstAccs)
+	return c.copyDeeply(ctx, srcRepo, reference, dstRepo, true, false, &dstAccs, option)
 }
 
 // as we call the docker registry APIs in the registry client directly,
 // this bypass our own logic(ensure, fire event, etc.) inside the registry handlers,
 // these logic must be covered explicitly here.
 // "copyDeeply" iterates the child artifacts and copy them first
-func (c *controller) copyDeeply(ctx context.Context, srcRepo, reference, dstRepo string, isRoot, isAcc bool, dstAccs *[]*accessorymodel.AccessoryData) (int64, error) {
-	var option *Option
-	option = &Option{WithTag: true, WithAccessory: true}
+func (c *controller) copyDeeply(ctx context.Context, srcRepo, reference, dstRepo string, isRoot, isAcc bool, dstAccs *[]*accessorymodel.AccessoryData, option *Option) (int64, error) {
+	if option == nil {
+		option = &Option{WithTag: true, WithAccessory: true}
+	}
+
 	if isAcc {
-		option = &Option{WithTag: true}
+		option.WithAccessory = false
 	}
 
 	srcArt, err := c.GetByReference(ctx, srcRepo, reference, option)
@@ -504,7 +506,7 @@ func (c *controller) copyDeeply(ctx context.Context, srcRepo, reference, dstRepo
 	// the artifact doesn't exist under the destination repository, continue to copy
 	// copy child artifacts if contains any
 	for _, reference := range srcArt.References {
-		if _, err = c.copyDeeply(ctx, srcRepo, reference.ChildDigest, dstRepo, false, false, dstAccs); err != nil {
+		if _, err = c.copyDeeply(ctx, srcRepo, reference.ChildDigest, dstRepo, false, false, dstAccs, option); err != nil {
 			return 0, err
 		}
 	}
@@ -520,7 +522,7 @@ func (c *controller) copyDeeply(ctx context.Context, srcRepo, reference, dstRepo
 		if os.Getenv("UTTEST") != "true" {
 			if len(accs) > 0 {
 				tmpDstAccs := make([]*accessorymodel.AccessoryData, 0)
-				_, err = c.copyDeeply(ctx, srcRepo, acc.GetData().Digest, dstRepo, true, false, &tmpDstAccs)
+				_, err = c.copyDeeply(ctx, srcRepo, acc.GetData().Digest, dstRepo, true, false, &tmpDstAccs, option)
 				if err != nil {
 					return 0, err
 				}
@@ -532,7 +534,7 @@ func (c *controller) copyDeeply(ctx context.Context, srcRepo, reference, dstRepo
 			Size:   acc.GetData().Size,
 		}
 		*dstAccs = append(*dstAccs, dstAcc)
-		id, err := c.copyDeeply(ctx, srcRepo, acc.GetData().Digest, dstRepo, false, true, dstAccs)
+		id, err := c.copyDeeply(ctx, srcRepo, acc.GetData().Digest, dstRepo, false, true, dstAccs, option)
 		if err != nil {
 			return 0, err
 		}

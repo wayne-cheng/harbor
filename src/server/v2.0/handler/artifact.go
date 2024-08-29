@@ -199,7 +199,11 @@ func (a *artifactAPI) CopyArtifact(ctx context.Context, params operation.CopyArt
 		return a.SendError(ctx, err)
 	}
 
-	_, err = a.artCtl.Copy(ctx, srcRepo, ref, dstRepo)
+	option := &artifact.Option{WithTag: true, WithAccessory: true}
+	if params.WithTag != nil {
+		option.WithTag = *params.WithTag
+	}
+	_, err = a.artCtl.Copy(ctx, srcRepo, ref, dstRepo, option)
 	if err != nil {
 		return a.SendError(ctx, err)
 	}

@@ -1054,6 +1054,12 @@ paths:
           description: The artifact from which the new artifact is copied from, the format should be "project/repository:tag" or "project/repository@digest".
           type: string
           required: true
+        - name: with_tag
+          in: query
+          description: Specify whether the tags are carried when copy the artifact.
+          type: boolean
+          required: false
+          default: true
       responses:
         '201':
           $ref: '#/responses/201'
